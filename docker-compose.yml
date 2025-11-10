@@ -11,5 +11,22 @@ services:
     volumes:
       - indextabledata:/data/db
 
+  # --- DỊCH VỤ MỚI THÊM VÀO ---
+  rabbitmq:
+    # Dùng image có 'management' để có giao diện web
+    image: rabbitmq:3-management 
+    container_name: index-table-mq
+    restart: unless-stopped
+    ports:
+      # Cổng 5672 cho ứng dụng Node.js kết nối
+      - "5672:5672"
+      # Cổng 15672 cho giao diện Web (UI)
+      - "15672:15672"
+    volumes:
+      # Lưu trữ dữ liệu (queues, messages) của RabbitMQ
+      - rabbitmqdata:/var/lib/rabbitmq
+
+# --- KHAI BÁO CÁC VOLUME ĐÃ DÙNG ---
 volumes:
   indextabledata:
+  rabbitmqdata: # <--- Khai báo volume mới
