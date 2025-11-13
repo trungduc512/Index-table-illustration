@@ -46,7 +46,7 @@ async function writeLog() {
         // 2. TÁC VỤ ĐỒNG BỘ (SYNC): Ghi vào bảng chính
         // Đây là bước duy nhất người dùng phải chờ
         const startTime = process.hrtime.bigint();
-        await newLog.save();
+        await newLog.save(); // <<< CHỈ ĐO 1 LẦN GHI NÀY
         const endTime = process.hrtime.bigint();
         console.log(`1. (Sync) Ghi vào 'logs' thành công. Tốn: ${Number(endTime - startTime) / 1_000_000} ms.`);
 

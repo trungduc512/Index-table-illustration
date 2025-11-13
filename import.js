@@ -1,82 +1,67 @@
-const fs = require("fs");
-const { MongoClient } = require("mongodb");
-const csv = require("csv-parser");
+import fs from "fs";
+import csv from "csv-parser";
+import mongoose from "mongoose";
+import SalesRecord from "./models/salesRecord.model.js";
 
-// ------------------------------------
-// !! EDIT THESE VALUES !!
-// ------------------------------------
-const ATLAS_URI =
-  "mongodb+srv://doductrung234_db_user:wz4YczDOWa4kOY0t@index-table-demo.r5kteji.mongodb.net/?appName=Index-table-demo";
-const DATABASE_NAME = "index-table-demo";
-const COLLECTION_NAME = "sales_records";
-const CSV_FILE_PATH = "./100000 Sales Records.csv"; // Path to your CSV file
-// ------------------------------------
+const MONGO_URI =
+  "mongodb://root:123456@localhost:27017/eventual-index-demo?authSource=admin";
+const CSV_FILE_PATH = "./100000 Sales Records.csv";
+const BATCH_SIZE = 10000;
 
-// A function to process the CSV and insert data in batches
 async function importCSV() {
-  const client = new MongoClient(ATLAS_URI);
-
   try {
-    // 1. Connect to MongoDB
-    await client.connect();
-    console.log("Connected to MongoDB Atlas.");
-
-    const db = client.db(DATABASE_NAME);
-    const collection = db.collection(COLLECTION_NAME);
-
-    // Optional: Clear the collection before importing
-    // await collection.deleteMany({});
-    // console.log("Cleared existing data in collection.");
+    await mongoose.connect(MONGO_URI);
+    console.log("✅ Connected to MongoDB via Mongoose.");
 
     let batch = [];
-    const batchSize = 10000; // Insert documents in batches of 1000
 
-    // 2. Create a read stream for the CSV file
     const stream = fs
       .createReadStream(CSV_FILE_PATH)
-      .pipe(csv()) // Pipe the stream to the csv-parser
+      .pipe(csv())
       .on("data", async (row) => {
-        // 'row' is a JSON object representing a line in the CSV
+        const record = {
+          region: row.Region,
+          country: row.Country,
+          itemType: row["Item Type"],
+          salesChannel: row["Sales Channel"],
+          orderPriority: row["Order Priority"],
+          orderDate: new Date(row["Order Date"]),
+          orderId: Number(row["Order ID"]), // chỉ lưu để tham chiếu
+          shipDate: new Date(row["Ship Date"]),
+          unitsSold: Number(row["Units Sold"]),
+          unitPrice: Number(row["Unit Price"]),
+          unitCost: Number(row["Unit Cost"]),
+          totalRevenue: Number(row["Total Revenue"]),
+          totalCost: Number(row["Total Cost"]),
+          totalProfit: Number(row["Total Profit"]),
+        };
 
-        // --- Optional: Data Transformation ---
-        // You can clean or transform your data here.
-        // For example, if you have an 'age' column that should be a number:
-        // if (row.age) {
-        //   row.age = parseInt(row.age, 10);
-        // }
-        // --------------------------------------
+        batch.push(record);
 
-        batch.push(row);
-
-        // 3. Insert data in batches
-        if (batch.length === batchSize) {
-          // Pause the stream, insert the batch, then resume
+        if (batch.length === BATCH_SIZE) {
           stream.pause();
-          await collection.insertMany(batch);
+          await SalesRecord.insertMany(batch);
           console.log(`Inserted ${batch.length} documents.`);
-          batch = []; // Clear the batch
+          batch = [];
           stream.resume();
         }
       })
       .on("end", async () => {
-        // 4. Insert any remaining documents (the last batch)
         if (batch.length > 0) {
-          await collection.insertMany(batch);
+          await SalesRecord.insertMany(batch);
           console.log(`Inserted final ${batch.length} documents.`);
         }
-
-        console.log("CSV file successfully processed.");
-        await client.close();
+        console.log("✅ CSV file successfully processed.");
+        await mongoose.disconnect();
       })
-      .on("error", (error) => {
+      .on("error", async (error) => {
         console.error("Error processing CSV:", error);
-        client.close();
+        await mongoose.disconnect();
       });
   } catch (err) {
     console.error("An error occurred:", err);
-    await client.close();
+    await mongoose.disconnect();
   }
 }
 
-// Run the import function
 importCSV();
