@@ -1,15 +1,22 @@
 // seedSalesData.js
 import mongoose from "mongoose";
 import { faker } from "@faker-js/faker";
+import dotenv from "dotenv";
 import SalesRecord from "./models/salesRecord.model.js";
 
-const uri =
-  "mongodb://root:123456@localhost:27017/eventual-index-demo?authSource=admin";
+dotenv.config();
 
 async function run() {
   try {
-    await mongoose.connect(uri);
+    console.time("⏱️ Total seeding time"); // ⏳ Bắt đầu đếm tổng thời gian
+
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ Connected to MongoDB");
+
+    // Xóa dữ liệu cũ để chạy lại demo
+    console.log("Deleting old data...");
+    await SalesRecord.deleteMany({});
+    console.log("Old data deleted.");
 
     const countries = [
       "Vietnam",
@@ -21,7 +28,6 @@ async function run() {
       "USA",
       "India",
     ];
-
     const regions = [
       "Asia",
       "Europe",
@@ -30,7 +36,6 @@ async function run() {
       "Central America and the Caribbean",
       "Australia and Oceania",
     ];
-
     const itemTypes = [
       "Beverages",
       "Cosmetics",
@@ -41,26 +46,36 @@ async function run() {
       "Vegetables",
       "Cereal",
     ];
-
     const salesChannels = ["Online", "Offline"];
     const priorities = ["L", "M", "H", "C"];
 
-    const totalDocs = 10000;
-    const batchSize = 10000;
-    const docs = [];
+    const totalDocs = 500_000;
+    const batchSize = 5_000;
+    let docs = [];
+
+    console.log(
+      `Generating and inserting ${totalDocs} documents in batches of ${batchSize}...`
+    );
+
+    // Đếm thời gian theo từng batch
+    let batchStart = Date.now();
 
     for (let i = 0; i < totalDocs; i++) {
-      const orderDate = faker.date.between("2015-01-01", "2015-12-31");
+      const orderDate = faker.date.between({
+        from: "2015-01-01",
+        to: "2015-12-31",
+      });
       const shipDate = new Date(
         orderDate.getTime() + Math.random() * 10 * 86400000
       );
-      const unitsSold = faker.datatype.number({ min: 1, max: 10000 });
-      const unitPrice = faker.datatype.number({
+
+      const unitsSold = faker.number.int({ min: 1, max: 10000 });
+      const unitPrice = faker.number.float({
         min: 10,
         max: 500,
         precision: 0.01,
       });
-      const unitCost = faker.datatype.number({
+      const unitCost = faker.number.float({
         min: 5,
         max: unitPrice,
         precision: 0.01,
@@ -71,13 +86,13 @@ async function run() {
       const totalProfit = +(totalRevenue - totalCost).toFixed(2);
 
       docs.push({
-        region: faker.random.arrayElement(regions),
-        country: faker.random.arrayElement(countries),
-        itemType: faker.random.arrayElement(itemTypes),
-        salesChannel: faker.random.arrayElement(salesChannels),
-        orderPriority: faker.random.arrayElement(priorities),
+        region: faker.helpers.arrayElement(regions),
+        country: faker.helpers.arrayElement(countries),
+        itemType: faker.helpers.arrayElement(itemTypes),
+        salesChannel: faker.helpers.arrayElement(salesChannels),
+        orderPriority: faker.helpers.arrayElement(priorities),
         orderDate,
-        orderId: faker.datatype.number({ min: 100000000, max: 999999999 }),
+        orderId: faker.number.int({ min: 100000000, max: 999999999 }),
         shipDate,
         unitsSold,
         unitPrice,
@@ -89,21 +104,28 @@ async function run() {
 
       if (docs.length === batchSize) {
         await SalesRecord.insertMany(docs);
-        console.log(`Inserted ${i + 1} documents...`);
-        docs.length = 0;
+        const batchEnd = Date.now();
+        const batchTime = ((batchEnd - batchStart) / 1000).toFixed(2);
+        console.log(
+          `✅ Inserted ${i + 1} documents (Batch time: ${batchTime}s)`
+        );
+        docs = [];
+        batchStart = Date.now(); // Reset thời gian cho batch tiếp theo
       }
     }
 
     if (docs.length > 0) {
       await SalesRecord.insertMany(docs);
-      console.log(`Inserted remaining ${docs.length} documents.`);
+      console.log(`✅ Inserted remaining ${docs.length} documents.`);
     }
 
+    console.timeEnd("⏱️ Total seeding time"); // 🕒 In tổng thời gian
     console.log("✅ Done inserting all random sales data!");
   } catch (err) {
     console.error("❌ Error inserting data:", err);
   } finally {
     await mongoose.disconnect();
+    console.log("🔌 Disconnected from MongoDB");
   }
 }
 
