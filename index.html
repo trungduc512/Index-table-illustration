@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MongoDB Seeding Comparison</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        background: #fafafa;
+      }
+      h1 {
+        color: #333;
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 16px;
+        color: #444;
+      }
+      progress {
+        width: 100%;
+        height: 25px;
+      }
+      canvas {
+        margin-top: 25px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+      }
+      .controls {
+        margin-top: 20px;
+      }
+      label {
+        margin-right: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>📊 MongoDB Seeding Comparison</h1>
+    <progress id="progress" value="0" max="100"></progress>
+    <div id="status">Waiting for data...</div>
+
+    <div class="controls">
+      <label
+        >Total Docs: <input type="number" id="totalDocs" value="20000"
+      /></label>
+      <label
+        >Batch Size: <input type="number" id="batchSize" value="2000"
+      /></label>
+      <button id="startBtn">🚀 Start Seeding</button>
+    </div>
+
+    <canvas id="speedChart" height="100"></canvas>
+
+    <script>
+      const socket = io("http://localhost:3000");
+
+      const progressBar = document.getElementById("progress");
+      const status = document.getElementById("status");
+      const startBtn = document.getElementById("startBtn");
+
+      const ctx = document.getElementById("speedChart").getContext("2d");
+      const chartData = {
+        labels: [],
+        datasets: [
+          {
+            label: "Indexed DB Total Time",
+            data: [],
+            borderColor: "rgb(54, 162, 235)",
+            backgroundColor: "rgba(54, 162, 235, 0.2)",
+            tension: 0.3,
+            fill: true,
+          },
+          {
+            label: "Non-Indexed DB Total Time",
+            data: [],
+            borderColor: "rgb(255, 99, 132)",
+            backgroundColor: "rgba(255, 99, 132, 0.2)",
+            tension: 0.3,
+            fill: true,
+          },
+        ],
+      };
+
+      const chart = new Chart(ctx, {
+        type: "line",
+        data: chartData,
+        options: {
+          responsive: true,
+          scales: {
+            y: { title: { display: true, text: "Total Time (seconds)" } },
+            x: { title: { display: true, text: "Batch Number" } },
+          },
+        },
+      });
+
+      let totalTime = { indexed: 0, nonindexed: 0 };
+      let batchCount = { indexed: 0, nonindexed: 0 };
+
+      socket.on("progress", (data) => {
+        const db = data.db; // 'indexed' or 'nonindexed'
+        totalTime[db] += parseFloat(data.batchTime);
+        batchCount[db]++;
+
+        // Only push label once (based on indexed DB batches)
+        if (db === "indexed") chart.data.labels.push(batchCount[db]);
+
+        const dsIndex = db === "indexed" ? 0 : 1;
+        chart.data.datasets[dsIndex].data.push(totalTime[db]);
+        chart.update();
+
+        status.innerText = `DB ${db}: Batch ${batchCount[db]}, Batch Time ${
+          data.batchTime
+        }s, Total: ${totalTime[db].toFixed(2)}s`;
+      });
+
+      socket.on("done", (msg) => {
+        status.innerText += ` | ${msg.message}`;
+        progressBar.value = 100;
+      });
+
+      startBtn.onclick = async () => {
+        const totalDocs = parseInt(document.getElementById("totalDocs").value);
+        const batchSize = parseInt(document.getElementById("batchSize").value);
+
+        chart.data.labels = [];
+        chart.data.datasets[0].data = [];
+        chart.data.datasets[1].data = [];
+        totalTime.indexed = 0;
+        totalTime.nonindexed = 0;
+        batchCount.indexed = 0;
+        batchCount.nonindexed = 0;
+        chart.update();
+
+        status.innerText = "Seeding started...";
+        progressBar.value = 0;
+
+        await fetch("http://localhost:3000/seed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ totalDocs, batchSize }),
+        });
+      };
+    </script>
+  </body>
+</html>
