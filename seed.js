@@ -13,6 +13,20 @@ async function run() {
     await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ Connected to MongoDB");
 
+    // Xóa tất cả index hiện có (ngoại trừ _id_)
+    const collection = mongoose.connection.collection("sales_records");
+    // const indexes = await collection.indexes();
+    // for (const idx of indexes) {
+    //   if (idx.name !== "_id_") await collection.dropIndex(idx.name);
+    // }
+
+    await collection.createIndex({
+      region: 1,
+      country: 1,
+      orderId: 1,
+      totalProfit: 1,
+    });
+
     // Xóa dữ liệu cũ để chạy lại demo
     console.log("Deleting old data...");
     await SalesRecord.deleteMany({});
@@ -27,7 +41,50 @@ async function run() {
       "Brazil",
       "USA",
       "India",
+      "China",
+      "Japan",
+      "South Korea",
+      "Canada",
+      "Mexico",
+      "Argentina",
+      "South Africa",
+      "Nigeria",
+      "Egypt",
+      "Russia",
+      "UK",
+      "Italy",
+      "Spain",
+      "Australia",
+      "New Zealand",
+      "Saudi Arabia",
+      "Turkey",
+      "Sweden",
+      "Norway",
+      "Denmark",
+      "Singapore",
+      "Malaysia",
+      "Indonesia",
+      "Philippines",
+      "Colombia",
+      "Chile",
+      "Peru",
+      "Kenya",
+      "Morocco",
+      "Pakistan",
+      "Bangladesh",
+      "Poland",
+      "Netherlands",
+      "Belgium",
+      "Switzerland",
+      "Austria",
+      "Greece",
+      "Portugal",
+      "Iceland",
+      "Finland",
+      "Ireland",
+      "Czech Republic",
     ];
+
     const regions = [
       "Asia",
       "Europe",
@@ -35,7 +92,21 @@ async function run() {
       "Middle East and North Africa",
       "Central America and the Caribbean",
       "Australia and Oceania",
+      "North America",
+      "South America",
+      "Eastern Europe",
+      "Western Europe",
+      "Southeast Asia",
+      "South Asia",
+      "Central Asia",
+      "Scandinavia",
+      "Pacific Islands",
+      "Middle East",
+      "Northern Africa",
+      "Southern Africa",
+      "Caribbean",
     ];
+
     const itemTypes = [
       "Beverages",
       "Cosmetics",
@@ -49,16 +120,15 @@ async function run() {
     const salesChannels = ["Online", "Offline"];
     const priorities = ["L", "M", "H", "C"];
 
-    const totalDocs = 500_000;
-    const batchSize = 5_000;
+    const totalDocs = 200_000;
+    const batchSize = 25_000; // chọn từ 25-50k tùy máy
     let docs = [];
 
     console.log(
       `Generating and inserting ${totalDocs} documents in batches of ${batchSize}...`
     );
 
-    // Đếm thời gian theo từng batch
-    let batchStart = Date.now();
+    let totalTime = 0;
 
     for (let i = 0; i < totalDocs; i++) {
       const orderDate = faker.date.between({
@@ -103,9 +173,11 @@ async function run() {
       });
 
       if (docs.length === batchSize) {
+        let batchStart = Date.now();
         await SalesRecord.insertMany(docs);
         const batchEnd = Date.now();
-        const batchTime = ((batchEnd - batchStart) / 1000).toFixed(2);
+        const batchTime = batchEnd - batchStart;
+        totalTime += batchTime;
         console.log(
           `✅ Inserted ${i + 1} documents (Batch time: ${batchTime}s)`
         );
@@ -119,7 +191,7 @@ async function run() {
       console.log(`✅ Inserted remaining ${docs.length} documents.`);
     }
 
-    console.timeEnd("⏱️ Total seeding time"); // 🕒 In tổng thời gian
+    console.log("⏱️ Total seeding time", totalTime); // 🕒 In tổng thời gian
     console.log("✅ Done inserting all random sales data!");
   } catch (err) {
     console.error("❌ Error inserting data:", err);
