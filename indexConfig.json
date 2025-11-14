@@ -2,16 +2,14 @@
   "withIndex": {
     "indexFields": [
       "orderId",
-      "region",
-      "country",
-      "orderPriority"
+      "shipDate"
     ],
-    "totalDocs": 50000,
+    "totalDocs": 60000,
     "batchSize": 10000
   },
   "noIndex": {
     "indexFields": [],
-    "totalDocs": 50000,
+    "totalDocs": 60000,
     "batchSize": 10000
   }
 }

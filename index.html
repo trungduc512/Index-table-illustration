@@ -3,6 +3,118 @@
   <head>
     <meta charset="UTF-8" />
     <title>Seed Benchmark Graph</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f7f7f9;
+        padding: 20px;
+        color: #333;
+      }
+
+      h2,
+      h3 {
+        font-weight: 600;
+        margin-bottom: 12px;
+        color: #222;
+      }
+
+      /* --- Form Container --- */
+      form {
+        background: #fff;
+        padding: 16px 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid #eee;
+      }
+
+      /* --- Label + Input Row --- */
+      form label {
+        display: block;
+        margin-bottom: 12px;
+        font-weight: 500;
+      }
+
+      form input {
+        margin-top: 4px;
+        padding: 8px;
+        width: 200px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+      }
+
+      /* --- Submit Button --- */
+      form button {
+        margin-top: 8px;
+        padding: 10px 18px;
+        background: #2d6cdf;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+      }
+
+      form button:hover {
+        background: #1f56c4;
+      }
+
+      #indexFieldList {
+        display: grid;
+        grid-template-columns: repeat(7, auto); /* 7 item mỗi hàng */
+        grid-auto-rows: auto;
+        gap: 10px 18px;
+        margin-top: 10px;
+      }
+
+      /* Mỗi item checkbox */
+      #indexFieldList label {
+        display: flex;
+        align-items: center;
+        background: #f5f5f7;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        cursor: pointer;
+      }
+
+      /* Tăng kích thước checkbox */
+      #indexFieldList input[type='checkbox'] {
+        width: 20px;
+        transform: scale(1.2);
+        margin-right: 8px;
+      }
+
+      /* --- Selected order list --- */
+      #selectedIndexOrder {
+        background: #fafafa;
+        padding: 12px 20px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        margin: 10px 0 15px 0;
+      }
+
+      #selectedIndexOrder li {
+        padding: 4px 0;
+        font-size: 15px;
+      }
+
+      /* Better spacing under <hr> */
+      hr {
+        margin: 30px 0;
+        border: none;
+        border-top: 1px solid #ddd;
+      }
+
+      /* Canvas spacing */
+      #benchmarkChart {
+        margin-top: 30px;
+      }
+    </style>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
@@ -18,38 +130,118 @@
         Batch Size:
         <input type="number" id="batchSize" />
       </label>
+      <div id="indexForm">
+        <div id="indexFieldList"></div>
+
+        <p><b>Selected Index Order:</b></p>
+        <ol id="selectedIndexOrder"></ol>
+      </div>
       <button type="submit">Update Config</button>
     </form>
 
     <canvas id="benchmarkChart" width="800" height="400"></canvas>
 
     <script>
+      const schemaFields = [
+        'region',
+        'country',
+        'itemType',
+        'salesChannel',
+        'orderPriority',
+        'orderDate',
+        'orderId',
+        'shipDate',
+        'unitsSold',
+        'unitPrice',
+        'unitCost',
+        'totalRevenue',
+        'totalCost',
+        'totalProfit',
+      ];
+
+      let selectedIndex = [];
+
+      function renderIndexFields() {
+        const list = document.getElementById('indexFieldList');
+        list.innerHTML = '';
+
+        schemaFields.forEach((field) => {
+          const id = `idx_${field}`;
+          list.innerHTML += `
+        <label style="display:block">
+          <input type="checkbox" id="${id}" data-field="${field}">
+          ${field}
+        </label>
+      `;
+        });
+
+        // Gắn event
+        schemaFields.forEach((field) => {
+          const checkbox = document.querySelector(`#idx_${field}`);
+          checkbox.addEventListener('change', () => {
+            if (checkbox.checked) {
+              // Append theo đúng thứ tự người chọn
+              selectedIndex.push(field);
+            } else {
+              // Remove
+              selectedIndex = selectedIndex.filter((f) => f !== field);
+            }
+            renderSelectedOrder();
+          });
+        });
+      }
+
+      function renderSelectedOrder() {
+        const list = document.getElementById('selectedIndexOrder');
+        list.innerHTML = '';
+        selectedIndex.forEach((field) => {
+          const li = document.createElement('li');
+          li.textContent = field;
+          list.appendChild(li);
+        });
+      }
+
+      // Khởi tạo UI
+      renderIndexFields();
+    </script>
+    <script>
       async function initializeConfigInputs() {
         // Lấy config từ backend
-        const configRes = await fetch("http://localhost:3000/api/config");
+        const configRes = await fetch('http://localhost:3000/api/config');
         const configData = await configRes.json();
-
+        console.log(configData);
         // Set giá trị vào input (ví dụ lấy noIndex làm mặc định)
-        document.getElementById("totalDocs").value =
+        document.getElementById('totalDocs').value =
           configData.noIndex.totalDocs;
-        document.getElementById("batchSize").value =
+        document.getElementById('batchSize').value =
           configData.noIndex.batchSize;
+        const indexFields = configData.withIndex.indexFields || [];
+
+        // Reset selectedIndex (global array)
+        selectedIndex = [...indexFields];
+
+        indexFields.forEach((field) => {
+          const cb = document.querySelector(`#idx_${field}`);
+          if (cb) cb.checked = true;
+        });
+
+        renderSelectedOrder();
       }
 
       // Gọi hàm trước khi vẽ chart
       initializeConfigInputs().then(drawChart);
 
       async function drawChart() {
-        const res = await fetch("http://localhost:3000/api/benchmarks");
+        const res = await fetch('http://localhost:3000/api/benchmarks');
         const data = await res.json();
 
         // Lấy config từ backend
-        const configRes = await fetch("http://localhost:3000/api/config");
+        const configRes = await fetch('http://localhost:3000/api/config');
         const configData = await configRes.json();
 
         // Lấy batchSize từ config để tính tích lũy
         const batchSize =
-          parseInt(document.getElementById("batchSize").value) ||
+          parseInt(document.getElementById('batchSize').value) ||
           configData.noIndex.batchSize;
 
         function cumulativeTimes(batchTimes) {
@@ -67,63 +259,66 @@
           labels,
           datasets: [
             {
-              label: "With Index",
+              label: 'With Index',
               data: cumulativeTimes(data.withIndex),
-              borderColor: "blue",
-              backgroundColor: "rgba(0,0,255,0.2)",
+              borderColor: 'blue',
+              backgroundColor: 'rgba(0,0,255,0.2)',
             },
             {
-              label: "No Index",
+              label: 'No Index',
               data: cumulativeTimes(data.noIndex),
-              borderColor: "red",
-              backgroundColor: "rgba(255,0,0,0.2)",
+              borderColor: 'red',
+              backgroundColor: 'rgba(255,0,0,0.2)',
             },
           ],
         };
 
         const config = {
-          type: "line",
+          type: 'line',
           data: chartData,
           options: {
             responsive: true,
             plugins: {
               title: {
                 display: true,
-                text: "Cumulative Seed Time vs Number of Records (ms)",
+                text: 'Cumulative Seed Time vs Number of Records (ms)',
               },
             },
             scales: {
               y: {
                 beginAtZero: true,
-                title: { display: true, text: "Total Time (ms)" },
+                title: { display: true, text: 'Total Time (ms)' },
               },
               x: {
-                title: { display: true, text: "Number of Records Inserted" },
+                title: { display: true, text: 'Number of Records Inserted' },
               },
             },
           },
         };
 
-        const ctx = document.getElementById("benchmarkChart").getContext("2d");
+        const ctx = document.getElementById('benchmarkChart').getContext('2d');
         new Chart(ctx, config);
       }
 
       // Form submit: update config
       document
-        .getElementById("configForm")
-        .addEventListener("submit", async (e) => {
+        .getElementById('configForm')
+        .addEventListener('submit', async (e) => {
           e.preventDefault();
           const totalDocs = parseInt(
-            document.getElementById("totalDocs").value
+            document.getElementById('totalDocs').value
           );
           const batchSize = parseInt(
-            document.getElementById("batchSize").value
+            document.getElementById('batchSize').value
           );
 
-          const res = await fetch("http://localhost:3000/api/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ totalDocs, batchSize }),
+          const indexFields = selectedIndex;
+          console.log(selectedIndex);
+
+          const res = await fetch('http://localhost:3000/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ totalDocs, batchSize, indexFields }),
           });
 
           const data = await res.json();
