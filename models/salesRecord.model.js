@@ -20,6 +20,4 @@ const salesRecordSchema = new mongoose.Schema(
   { collection: "sales_records" }
 );
 
-// salesRecordSchema.index({ region: 1, country: 1 });
-
 export default mongoose.model("SalesRecord", salesRecordSchema);
