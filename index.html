@@ -2,147 +2,135 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>MongoDB Seeding Comparison</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <title>Seed Benchmark Graph</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        padding: 20px;
-        background: #fafafa;
-      }
-      h1 {
-        color: #333;
-      }
-      #status {
-        margin-top: 10px;
-        font-size: 16px;
-        color: #444;
-      }
-      progress {
-        width: 100%;
-        height: 25px;
-      }
-      canvas {
-        margin-top: 25px;
-        background: #fff;
-        border-radius: 10px;
-        box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
-      }
-      .controls {
-        margin-top: 20px;
-      }
-      label {
-        margin-right: 15px;
-      }
-    </style>
   </head>
   <body>
-    <h1>📊 MongoDB Seeding Comparison</h1>
-    <progress id="progress" value="0" max="100"></progress>
-    <div id="status">Waiting for data...</div>
+    <h2>Seed Benchmark Cumulative Time</h2>
 
-    <div class="controls">
-      <label
-        >Total Docs: <input type="number" id="totalDocs" value="20000"
-      /></label>
-      <label
-        >Batch Size: <input type="number" id="batchSize" value="2000"
-      /></label>
-      <button id="startBtn">🚀 Start Seeding</button>
-    </div>
+    <!-- Form chỉnh config -->
+    <form id="configForm">
+      <label>
+        Total Docs:
+        <input type="number" id="totalDocs" />
+      </label>
+      <label>
+        Batch Size:
+        <input type="number" id="batchSize" />
+      </label>
+      <button type="submit">Update Config</button>
+    </form>
 
-    <canvas id="speedChart" height="100"></canvas>
+    <canvas id="benchmarkChart" width="800" height="400"></canvas>
 
     <script>
-      const socket = io("http://localhost:3000");
+      async function initializeConfigInputs() {
+        // Lấy config từ backend
+        const configRes = await fetch("http://localhost:3000/api/config");
+        const configData = await configRes.json();
 
-      const progressBar = document.getElementById("progress");
-      const status = document.getElementById("status");
-      const startBtn = document.getElementById("startBtn");
+        // Set giá trị vào input (ví dụ lấy noIndex làm mặc định)
+        document.getElementById("totalDocs").value =
+          configData.noIndex.totalDocs;
+        document.getElementById("batchSize").value =
+          configData.noIndex.batchSize;
+      }
 
-      const ctx = document.getElementById("speedChart").getContext("2d");
-      const chartData = {
-        labels: [],
-        datasets: [
-          {
-            label: "Indexed DB Total Time",
-            data: [],
-            borderColor: "rgb(54, 162, 235)",
-            backgroundColor: "rgba(54, 162, 235, 0.2)",
-            tension: 0.3,
-            fill: true,
+      // Gọi hàm trước khi vẽ chart
+      initializeConfigInputs().then(drawChart);
+
+      async function drawChart() {
+        const res = await fetch("http://localhost:3000/api/benchmarks");
+        const data = await res.json();
+
+        // Lấy config từ backend
+        const configRes = await fetch("http://localhost:3000/api/config");
+        const configData = await configRes.json();
+
+        // Lấy batchSize từ config để tính tích lũy
+        const batchSize =
+          parseInt(document.getElementById("batchSize").value) ||
+          configData.noIndex.batchSize;
+
+        function cumulativeTimes(batchTimes) {
+          let total = 0;
+          return batchTimes.map((t) => (total += t));
+        }
+
+        function cumulativeRecords(batchTimes) {
+          return batchTimes.map((_, i) => (i + 1) * batchSize);
+        }
+
+        const labels = cumulativeRecords(data.withIndex);
+
+        const chartData = {
+          labels,
+          datasets: [
+            {
+              label: "With Index",
+              data: cumulativeTimes(data.withIndex),
+              borderColor: "blue",
+              backgroundColor: "rgba(0,0,255,0.2)",
+            },
+            {
+              label: "No Index",
+              data: cumulativeTimes(data.noIndex),
+              borderColor: "red",
+              backgroundColor: "rgba(255,0,0,0.2)",
+            },
+          ],
+        };
+
+        const config = {
+          type: "line",
+          data: chartData,
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: "Cumulative Seed Time vs Number of Records (ms)",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: "Total Time (ms)" },
+              },
+              x: {
+                title: { display: true, text: "Number of Records Inserted" },
+              },
+            },
           },
-          {
-            label: "Non-Indexed DB Total Time",
-            data: [],
-            borderColor: "rgb(255, 99, 132)",
-            backgroundColor: "rgba(255, 99, 132, 0.2)",
-            tension: 0.3,
-            fill: true,
-          },
-        ],
-      };
+        };
 
-      const chart = new Chart(ctx, {
-        type: "line",
-        data: chartData,
-        options: {
-          responsive: true,
-          scales: {
-            y: { title: { display: true, text: "Total Time (seconds)" } },
-            x: { title: { display: true, text: "Batch Number" } },
-          },
-        },
-      });
+        const ctx = document.getElementById("benchmarkChart").getContext("2d");
+        new Chart(ctx, config);
+      }
 
-      let totalTime = { indexed: 0, nonindexed: 0 };
-      let batchCount = { indexed: 0, nonindexed: 0 };
+      // Form submit: update config
+      document
+        .getElementById("configForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const totalDocs = parseInt(
+            document.getElementById("totalDocs").value
+          );
+          const batchSize = parseInt(
+            document.getElementById("batchSize").value
+          );
 
-      socket.on("progress", (data) => {
-        const db = data.db; // 'indexed' or 'nonindexed'
-        totalTime[db] += parseFloat(data.batchTime);
-        batchCount[db]++;
+          const res = await fetch("http://localhost:3000/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ totalDocs, batchSize }),
+          });
 
-        // Only push label once (based on indexed DB batches)
-        if (db === "indexed") chart.data.labels.push(batchCount[db]);
-
-        const dsIndex = db === "indexed" ? 0 : 1;
-        chart.data.datasets[dsIndex].data.push(totalTime[db]);
-        chart.update();
-
-        status.innerText = `DB ${db}: Batch ${batchCount[db]}, Batch Time ${
-          data.batchTime
-        }s, Total: ${totalTime[db].toFixed(2)}s`;
-      });
-
-      socket.on("done", (msg) => {
-        status.innerText += ` | ${msg.message}`;
-        progressBar.value = 100;
-      });
-
-      startBtn.onclick = async () => {
-        const totalDocs = parseInt(document.getElementById("totalDocs").value);
-        const batchSize = parseInt(document.getElementById("batchSize").value);
-
-        chart.data.labels = [];
-        chart.data.datasets[0].data = [];
-        chart.data.datasets[1].data = [];
-        totalTime.indexed = 0;
-        totalTime.nonindexed = 0;
-        batchCount.indexed = 0;
-        batchCount.nonindexed = 0;
-        chart.update();
-
-        status.innerText = "Seeding started...";
-        progressBar.value = 0;
-
-        await fetch("http://localhost:3000/seed", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ totalDocs, batchSize }),
+          const data = await res.json();
+          alert(`Config updated: ${JSON.stringify(data.config)}`);
         });
-      };
+
+      drawChart(); // vẽ chart lúc load page
     </script>
   </body>
 </html>

@@ -10,30 +10,33 @@ const indexConfig = JSON.parse(
   fs.readFileSync(new URL("./indexConfig.json", import.meta.url), "utf-8")
 );
 
-async function seedDatabase(
-  uri,
-  indexFields,
-  totalDocs = 100000,
-  batchSize = 10000
-) {
+async function seedDatabase(uri, config) {
+  const { indexFields, totalDocs, batchSize } = config; // <- lấy từ JSON
+
   const conn = await mongoose.createConnection(uri).asPromise();
   const Sales = conn.model("SalesRecord", SalesRecord.schema, "sales_records");
 
-  // Reset DB
   await Sales.deleteMany({});
   console.log(`[${uri}] Old data deleted`);
 
-  // Tạo index nếu có
-  if (indexFields.length > 0) {
+  const collection = conn.collection("sales_records");
+  const existingIndexes = await collection.indexes();
+  for (const idx of existingIndexes) {
+    if (idx.name !== "_id_") {
+      await collection.dropIndex(idx.name);
+      console.log(`[${uri}] Dropped index: ${idx.name}`);
+    }
+  }
+
+  if (indexFields.length > 0 && Array.isArray(indexFields)) {
     const indexObj = {};
     indexFields.forEach((f) => (indexObj[f] = 1));
     await conn.collection("sales_records").createIndex(indexObj);
     console.log(`[${uri}] Index created:`, indexObj);
   }
 
-  // Insert data
   let docs = [];
-  let batchTimes = []; // ⬅ Lưu thời gian mỗi batch
+  let batchTimes = [];
   let totalTime = 0;
 
   for (let i = 0; i < totalDocs; i++) {
@@ -43,8 +46,8 @@ async function seedDatabase(
       const start = Date.now();
       await Sales.insertMany(docs);
       const batchTime = Date.now() - start;
+      batchTimes.push(batchTime);
       totalTime += batchTime;
-      batchTimes.push(batchTime); // ⬅ lưu thời gian batch
       console.log(
         `[${uri}] Inserted batch of ${docs.length} docs in ${batchTime} ms`
       );
@@ -56,8 +59,8 @@ async function seedDatabase(
     const start = Date.now();
     await Sales.insertMany(docs);
     const batchTime = Date.now() - start;
-    totalTime += batchTime;
     batchTimes.push(batchTime);
+    totalTime += batchTime;
     console.log(
       `[${uri}] Inserted final batch of ${docs.length} docs in ${batchTime} ms`
     );
@@ -66,10 +69,10 @@ async function seedDatabase(
   await conn.close();
   console.log(`[${uri}] Seed finished in total time: ${totalTime} ms`);
 
-  return batchTimes; // Trả về mảng thời gian từng batch
+  return batchTimes;
 }
 
-async function run() {
+export async function run() {
   const metrics = {};
 
   for (const [key, fields] of Object.entries(indexConfig)) {
@@ -87,4 +90,4 @@ async function run() {
   console.log("✅ benchmarks.json updated with batch times");
 }
 
-run();
+// run();

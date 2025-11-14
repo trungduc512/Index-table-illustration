@@ -1,4 +1,17 @@
 {
-  "withIndex": ["orderId", "region", "country", "totalProfit"],
-  "noIndex": []
+  "withIndex": {
+    "indexFields": [
+      "orderId",
+      "region",
+      "country",
+      "orderPriority"
+    ],
+    "totalDocs": 50000,
+    "batchSize": 10000
+  },
+  "noIndex": {
+    "indexFields": [],
+    "totalDocs": 50000,
+    "batchSize": 10000
+  }
 }
