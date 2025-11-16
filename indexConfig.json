@@ -1,0 +1,15 @@
+{
+  "withIndex": {
+    "indexFields": [
+      "orderId",
+      "shipDate"
+    ],
+    "totalDocs": 60000,
+    "batchSize": 10000
+  },
+  "noIndex": {
+    "indexFields": [],
+    "totalDocs": 60000,
+    "batchSize": 10000
+  }
+}

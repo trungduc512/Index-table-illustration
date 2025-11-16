@@ -1,72 +1,114 @@
-// --- 1. KẾT NỐI DATABASE ---
-// Sử dụng connection string của database (cổng 27017)
-const MONGO_URI = "mongodb://root:123456@localhost:27017/index-table-demo?authSource=admin";
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import cors from 'cors';
+import { run } from './seed.js';
 
-// Sử dụng Mongoose để kết nối và thao tác với MongoDB
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// --- 2. ĐỊNH NGHĨA SCHEMA CHO COLLECTION sales_records ---
-const SalesRecordSchema = new Schema({
-    Region: String,
-
-    Country: {
-      type: String,
-      index: true
-    },
-    'Item Type': String, 
-    'Sales Channel': String,
-    'Order Priority': String, 
-    'Order Date': Date,
-    'Order ID': String,
-    'Ship Date': Date, 
-    'Units Sold': Number,
-    'Unit Price': Number,
-    'Unit Cost': Number,
-    'Total Revenue': Number,
-    'Total Cost': Number,
-    'Total Profit': Number
-}, {
-    // Chỉ định Mongoose dùng collection 'sales_records' đã có sẵn
-    collection: 'sales_records', 
-    
-    // Cho phép các trường khác (nếu có) trong document
-    // mà không bị Mongoose loại bỏ.
-    strict: false 
-});
-
-const sales_records = mongoose.model('sales_records', SalesRecordSchema);
-
-// --- 3. HÀM CHẠY CHÍNH ---
-// Chúng ta tạo một hàm async để có thể dùng 'await'
-async function runDatabaseDemo() {
-    try {
-        // Kết nối
-        await mongoose.connect(MONGO_URI);
-        console.log('Đã kết nối tới MongoDB!');
-
-        const indexes = await sales_records.collection.listIndexes().toArray();
-        console.log('Lấy danh sách index', indexes);
-
-        const query = { 
-            'Country': 'Vietnam', 
-        };
-
-        const explainResult = await sales_records
-            .find(query)
-            .explain('executionStats');
-          
-        console.log('\nKẾT QUẢ EXPLAIN:\n', JSON.stringify(explainResult.executionStats));
-
-    } catch (error) {
-        // Xử lý nếu có lỗi
-        console.error('Lỗi:', error.message);
-    } finally {
-        // Rất quan trọng: Luôn ngắt kết nối sau khi chạy xong
-        await mongoose.disconnect();
-        console.log('\nĐã ngắt kết nối MongoDB. Tạm biệt!');
-    }
+const CONFIG_FILE = path.join(__dirname, 'indexConfig.json');
+let indexConfig = {};
+try {
+  indexConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+} catch (err) {
+  console.warn('indexConfig.json not found or invalid — using empty config');
 }
 
-// --- 4. GỌI HÀM ĐỂ CHẠY ---
-runDatabaseDemo();
+// auto-run seeding on start
+await run();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Serve static files from project root and public folder
+app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+app.use(cors());
+
+// API để trả benchmarks.json
+app.get('/api/benchmarks', (req, res) => {
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'benchmarks.json'), 'utf-8')
+    );
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Cannot read benchmarks.json' });
+  }
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// GET current config
+app.get('/api/config', (req, res) => {
+  res.json(indexConfig);
+});
+
+// POST update config; body: { key, totalDocs?, batchSize?, indexFields? }
+app.post('/api/config', (req, res) => {
+  const { totalDocs, batchSize, indexFields } = req.body;
+
+  if (
+    totalDocs === undefined &&
+    batchSize === undefined &&
+    indexFields === undefined
+  ) {
+    return res
+      .status(400)
+      .json({ error: 'Request body must include totalDocs and/or batchSize' });
+  }
+
+  if (totalDocs !== undefined) {
+    const n = Number(totalDocs);
+    if (!Number.isFinite(n) || n <= 0)
+      return res
+        .status(400)
+        .json({ error: 'totalDocs must be a positive number' });
+    Object.keys(indexConfig).forEach((k) => {
+      indexConfig[k].totalDocs = n;
+    });
+  }
+
+  if (batchSize !== undefined) {
+    const b = Number(batchSize);
+    if (!Number.isFinite(b) || b <= 0)
+      return res
+        .status(400)
+        .json({ error: 'batchSize must be a positive number' });
+    Object.keys(indexConfig).forEach((k) => {
+      indexConfig[k].batchSize = b;
+    });
+  }
+
+  if (indexFields !== undefined) {
+    let parsed;
+    if (Array.isArray(indexFields)) parsed = indexFields;
+    else if (typeof indexFields === 'string')
+      parsed = indexFields
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else
+      return res.status(400).json({
+        error: 'indexFields must be an array or comma-separated string',
+      });
+
+    if (!indexConfig.withIndex) {
+      return res.status(500).json({ error: "Config 'withIndex' not found" });
+    }
+    indexConfig.withIndex.indexFields = parsed;
+  }
+
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(indexConfig, null, 2));
+
+  res.json({ message: 'Config updated', config: indexConfig });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
